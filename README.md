@@ -1,6 +1,6 @@
 # BNP-Track
 
-This software package includes several Matlab scripts and auxiliary functions, which implement the computational algorithms for the framework BNP-Track described in the following publication:
+This software package includes several Matlab scripts and auxiliary functions, which implement the computational algorithms for the framework BNP-Track described in:
 [https://www.biorxiv.org/content/10.1101/2023.04.03.535440v1](https://www.biorxiv.org/content/10.1101/2023.04.03.535440v1)
 
 
