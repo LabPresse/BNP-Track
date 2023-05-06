@@ -11,4 +11,4 @@ This software package includes several Matlab scripts and auxiliary functions, w
 2) We are working on BNP-Track's documentation and highly encourage you to reach out to us at:
     weiqing1@asu.edu, or spresse@asu.edu
 
-3) This software (source code and GUI) is developed in Matlab R2022b.
+3) This code is developed in Matlab R2022b.
