@@ -25,7 +25,7 @@ function sample = chainer_init_sample(params)
 
     [sample.Xm, sample.Ym, sample.Zm] = sampler_update_locs_cm(params.M, sample.D, params);
 
-    %% records
+    %% record acceptance ratios for some adapative tuning
     sample.rec_Fh = repmat([0; eps], 1, 3); % emission rates
     sample.rec_XYZ = repmat([0; eps], 1, 2); % locator proposals
 end
