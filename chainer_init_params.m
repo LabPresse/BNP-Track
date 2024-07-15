@@ -1,94 +1,112 @@
 function params = chainer_init_params(opts)
 
-    %% Units
-    params.units = opts.units;
 
-    %% Sizes
-    params.Px = size(opts.w_cnt, 1);
-    params.Py = size(opts.w_cnt, 2);
-    params.P = params.Px * params.Py;
-    params.N = size(opts.w_cnt, 3);
+%% Samplers
+params.F_IC = size(opts.w_cnt,1)*size(opts.w_cnt,2);
+params.F_TC = 1;
+params.i_sc = 10/log(2);
 
-    params.M = 100;
-    params.K = 5; % points per frame
 
-    %% Pixel boundaries and data
-    params.x_bnd = reshape(opts.x_bnd, params.Px + 1, 1); % [length]
-    params.y_bnd = reshape(opts.y_bnd, 1, params.Py + 1); % [length]
-    params.px_area = diff(params.x_bnd) * diff(params.y_bnd);
-    params.px_area_col = reshape(diff(params.x_bnd) * diff(params.y_bnd), params.P, 1);
+%% Set-up
+params.units = opts.units;
 
-    params.w_cnt = reshape(opts.w_cnt, params.Px, params.Py, params.N);
+params.t_ded = double( opts.t_ded );  % [time] dead time 
 
-    %% Image discretization
-    params.ak = [0.5 ones(1, params.K - 2) 0.5] / (params.K - 1); % composite trapezoid
+params.x_bnd = double( opts.x_bnd );  % [length] pixel edges 
+params.y_bnd = double( opts.y_bnd );  % [length] pixel edges
+params.t_exp = double( opts.t_exp );  % [time] exposure times
 
-    %% Time levels
-    params.dt_stp = opts.dt_stp; % [time] frame separation
-    params.dt_exp = opts.dt_exp; % [time] exposure time
+params.wM = double( opts.wM ); % [image]          read-out offset
+params.wV = double( opts.wV ); % [image]^2        read-out variance
+params.wG = double( opts.wG ); % [image]/[photon] overall gain
+params.wF = double( opts.wF ); %                  excess noise factor
 
-    params.t_bnd = params.dt_stp * (0:params.N)';
-    params.t_mid = reshape(bsxfun( ...
-        @plus, ...
-        params.t_bnd(1:params.N), ...
-        linspace( ...
-        0.5 * (params.dt_stp - params.dt_exp), ...
-        params.dt_stp - 0.5 * (params.dt_stp - params.dt_exp), ...
-        params.K ...
-    ) ...
-    )', params.N * params.K, 1);
-    params.t_idx = reshape(1:params.N * params.K, params.K, params.N)';
+params.Px = size(opts.w_cnt,1);
+params.Py = size(opts.w_cnt,2);
+params.N  = size(opts.w_cnt,3);
+params.M  = 25;
 
-    %% Diffusion coefficient
-    params.D_prior_phi = 5;
-    params.D_prior_chi = (1 - 1 / params.D_prior_phi) * 0.1; % [area/time]
+params.s_ref = double( 0.21*opts.lambda/opts.nNA );                 % [length]
+params.z_ref = double( 4*pi*opts.nRI*params.s_ref^2/opts.lambda );  % [length]
 
-    %% Optical parameters
-    params.PSF_params = opts.PSF_params;
+%% Consistency check
+params.x_bnd = reshape(params.x_bnd,params.Px+1,1);
+params.y_bnd = reshape(params.y_bnd,1,params.Py+1);
+params.t_exp = reshape(params.t_exp,params.N,1   );
 
-    params.f = opts.f; % excess noise factor
-    params.w_cnt_log = reshape(log(params.w_cnt / params.f), params.P, params.N);
 
-    params.F_prior_phi = 2;
-    params.F_prior_psi = params.f ...
-        * mean(params.w_cnt(:))^2 ...
-        / var(params.w_cnt(:)) ...
-        / params.dt_exp ...
-        / (sum(params.px_area, 'all') / params.Px / params.Py); % photons/[area*time]
+%% Pre-processed measurments
+params.dW_cnt = ( double( opts.w_cnt ) - params.wM )/params.wG; % [photons]
 
-    params.h_prior_phi = 2;
-    params.h_prior_psi = params.F_prior_psi * 5 * pi * 2 * log(2) * params.PSF_params.s_ref^2; % photons/[time]
+if any(diff(params.x_bnd)<0) || ...
+   any(diff(params.y_bnd)<0)
+    error('Inconsistent arrangement. Sort x_bnd, y_bnd')
+end
 
-    params.G_prior_phi = 2;
-    params.G_prior_chi = (1 - 1 / params.G_prior_phi) ...
-        * (var(params.w_cnt(:)) / mean(params.w_cnt(:)) / params.f); % [image]/photon
+params.t_bnd = [0;cumsum(params.t_exp+params.t_ded)];
+params.t_mid = 0.5*(params.t_bnd(1:end-1)+params.t_bnd(2:end));
 
-    %% Beta-Bernoulli
-    params.bm_prior_gamma = 0.05;
+params.dt = diff(params.t_mid);
 
-    %% Location priors
-    params.Xm_prior_mu = 0.5 * (params.x_bnd(1) + params.x_bnd(end)); % [length]
-    params.Ym_prior_mu = 0.5 * (params.y_bnd(1) + params.y_bnd(end)); % [length]
-    % params.Zm_prior_mu = params.PSF_params.z_ref; % [length]
-    params.Zm_prior_mu = 0;
 
-    params.Xm_prior_sg = 0.3 * (params.x_bnd(end) - params.x_bnd(1)); % [length]
-    params.Ym_prior_sg = 0.3 * (params.y_bnd(end) - params.y_bnd(1)); % [length]
-    params.Zm_prior_sg = params.PSF_params.z_ref; % [length]
+%% Dynamics
+D_ref = 0.01; % [area]/[time];
+params.D_prior_A = 2;
+params.D_prior_B = (params.D_prior_A-1)*D_ref;
 
-    %% aux sampler's params
 
-    params.i_skip = 1;
+%% Positions
+ds = 1; % [length]
+dz = ds + 0.5*min(params.x_bnd(end)-params.x_bnd(1),params.y_bnd(end)-params.y_bnd(1));
 
-    params.T_init = 100;
-    %params.T_pace = 0.01;
-    params.T_end = 1000;
+params.X_prior_min = params.x_bnd(  1) - ds;    % [lenght]
+params.Y_prior_min = params.y_bnd(  1) - ds;    % [lenght]
+params.Z_prior_min =                   - dz;    % [lenght]
 
-    params.MH_sc = [[100 100 2] [0.05 0.05 0.05]];
-    %[[100 100 2] [0.1 * 3 * params.K 1 0.01]];
+params.X_prior_max = params.x_bnd(end) + ds;    % [lenght]
+params.Y_prior_max = params.y_bnd(end) + ds;    % [lenght]
+params.Z_prior_max =                   + dz;    % [lenght]
 
-    %% misc
-    % ground truth
-    if isfield(opts, 'ground')
-        params.ground = opts.ground;
-    end
+%% Photon emission rates
+tot_pht = reshape(sum(params.dW_cnt,[1,2]),params.N,1,1);
+tot_are = (params.x_bnd(end)-params.x_bnd(1))*(params.y_bnd(end)-params.y_bnd(1));
+
+params.C_prior_A   = tot_pht;
+params.C_prior_REF = tot_pht/tot_are./params.t_exp;
+
+area_ref = 1; % [micron]^2
+params.h_prior_A   = repmat(2,params.N,1);
+params.h_prior_REF = tot_pht./params.t_exp/tot_are*area_ref;
+
+%% Loads
+log_b_prior_gamma = 0;
+
+if params.M <= exp( log_b_prior_gamma )
+    error('Inconsistent BNP approximation. Adjust M or \gamma')
+end
+
+b_prior_log_p1 = log_b_prior_gamma - log(params.M);
+b_prior_log_p0 = log1p(-exp(b_prior_log_p1));
+params.b_prior_log_p1_m_log_p0 = b_prior_log_p1 - b_prior_log_p0;
+
+%% ground
+if isfield(opts,'ground')
+    params.ground = opts.ground;
+end
+
+%% MCMC Samplers
+
+params.x_win = params.X_prior_max-params.X_prior_min;
+params.y_win = params.Y_prior_max-params.Y_prior_min;
+params.z_win = params.Z_prior_max-params.Z_prior_min;
+
+params.I_max = inf;
+
+params.C_WIN = 0.01*params.C_prior_REF;
+params.h_WIN = 0.10*params.h_prior_REF;
+
+params.BKC_rep = 25;
+params.HHH_rep = 25;
+params.PP0_rep =  5;
+params.PPF_rep =  1;
+

@@ -1,359 +1,243 @@
-function Gim = chainer_visualize(Gim, chain)
+function Gim = chainer_visualize(Gim,chain)
 
-    % mask_sm = nan(chain.params.N,chain.params.M);
-    % mask_sm(chain.sample.sm==2) = 1;
+chain_B = sum(chain.b,2);
 
-    mask_Sm = get_mask_Sm(chain.sample.sm, chain.params);
+chain_b = repmat(1:chain.params.M,chain.length,1);
+chain_b(~chain.b) = nan;
 
-    Bm = sum(chain.bm, 2);
-    Bm(Bm == 0) = nan;
+X = chain.sample.X;
+Y = chain.sample.Y;
+Z = chain.sample.Z;
+idx = find(~chain.sample.b);
+X(:,idx) = nan;
+Y(:,idx) = nan;
+Z(:,idx) = nan;
 
-    %% init
-    if isempty(Gim)
+k_idx = sub2ind([chain.params.N chain.params.M],chain.sample.K,1:chain.params.M);
+K = chain.sample.K;
+x = X(k_idx);
+y = Y(k_idx);
+z = Z(k_idx);
 
-        i = double(chain.i(1)) + chain.params.i_skip * (0:chain.length - 1)';
 
-        mum = 3;
-        num = 7;
+%% init
+if isempty(Gim)
+    
+    col_1 = [  0 204   0]/255; % bright
+    col_2 = [ 51 102 204]/255; % dark
+    col_3 = [255 204   0]/255; % dark
+    
+    num = 7;
+    mum = 5;
+    
+    chain_i = double(chain.i(1)) + chain.stride*(0:chain.length-1)';
+    i_lim = [max(chain_i(1),0.1*chain_i(end)) chain_i(end)+1];
 
-        figure(10)
-        set(gcf, 'windowstyle', 'docked')
-        clf
 
-        %----------------------------------------------------------------------
-        subplot(num, mum, 0 * mum + [1 mum - 1]);
-        axis off
-        title('Current sample')
+    
+    figure(10)
+    clf
 
-        %----------------------------------------------------------------------
-        subplot(num, mum, 1 * mum + [1 2 * mum - 1]);
-        Gim.ax_SAMP_x = plot(chain.params.t_mid, chain.sample.Xm, 'b', ...
-            chain.params.t_mid, chain.sample.Xm .* mask_Sm, '.-');
+    
+    
+    % --- Sample ----------------------------------------------------------
+    ax_X = subplot(num,mum,[1 mum*(num-3)+1]);
+    ax_Y = subplot(num,mum,[2 mum*(num-3)+2]);
+    ax_Z = subplot(num,mum,[3 mum*(num-3)+3]);
 
-        if isfield(chain.params, 'ground')
-            temp = line( ...
-                chain.params.ground.tk, ...
-                chain.params.ground.Xk, ...
-                'color', 'r', 'LineWidth', 2 ...
-            );
+    Gim.X = plot(ax_X,X,chain.params.t_mid,'.-','color',col_1);
+    Gim.Y = plot(ax_Y,Y,chain.params.t_mid,'.-','color',col_1);
+    Gim.Z = plot(ax_Z,Z,chain.params.t_mid,'.-','color',col_1);
 
-            for m = 1:length(temp)
-                uistack(temp(m), 'bottom');
-            end
+    Gim.x = line(ax_X,x,chain.params.t_mid(K),'marker','*','linestyle','none','color',col_3);
+    Gim.y = line(ax_Y,y,chain.params.t_mid(K),'marker','*','linestyle','none','color',col_3);
+    Gim.z = line(ax_Z,z,chain.params.t_mid(K),'marker','*','linestyle','none','color',col_3);
 
-        end
+    ax_X.Box = 'off';
+    ax_Y.Box = 'off';
+    ax_Z.Box = 'off';
+    
+    xline(ax_X,chain.params.x_bnd([1 end]),':')
+    xline(ax_Y,chain.params.y_bnd([1 end]),':')
 
-        clear temp
-        xlim(chain.params.t_bnd([1 end]))
+    yline(ax_X,chain.params.t_bnd,':')
+    yline(ax_Y,chain.params.t_bnd,':')
+    yline(ax_Z,chain.params.t_bnd,':')
 
-        for m = 1:chain.params.M
+    xline(ax_X,chain.params.X_prior_min,'--')
+    xline(ax_Y,chain.params.Y_prior_min,'--')
+    xline(ax_Z,chain.params.Z_prior_min,'--')
+    
+    xline(ax_X,chain.params.X_prior_max,'--')
+    xline(ax_Y,chain.params.Y_prior_max,'--')
+    xline(ax_Z,chain.params.Z_prior_max,'--')
 
-            if chain.sample.bm(m)
-                Gim.ax_SAMP_x(m).LineStyle = '-';
-                Gim.ax_SAMP_x(m).LineWidth = 2;
-                Gim.ax_SAMP_x(m + chain.params.M).Color = 'g';
-            else
-                Gim.ax_SAMP_x(m).LineStyle = ':';
-                Gim.ax_SAMP_x(m + chain.params.M).Color = 'b';
-            end
+    xline(ax_Z,0,':')
 
-        end
+    ax_X.XLim = [min(ax_X.XLim(1),min(X(:))) max(ax_X.XLim(2),max(max(X(:))))];
+    ax_Y.XLim = [min(ax_Y.XLim(1),min(Y(:))) max(ax_Y.XLim(2),max(max(Y(:))))];
+    ax_Z.XLim = [min(ax_Z.XLim(1),min(Z(:))) max(ax_Z.XLim(2),max(max(Z(:))))];
 
-        add_prior(gca, 'norm', chain.params.Xm_prior_mu, chain.params.Xm_prior_sg)
-        ylabel(['X^m (', chain.params.units.length, ')'])
-        box off
-        grid on
-        line(chain.params.t_bnd(end - 2) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', '-');
-        line(chain.params.t_bnd(end - 1) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', '-');
-        line(chain.params.t_mid(chain.params.t_idx(end - 1, :), :) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', ':');
-        line(get(gca, 'xlim'), chain.params.x_bnd(1) * [1 1], 'color', 'k', 'linestyle', '--');
-        line(get(gca, 'xlim'), chain.params.x_bnd(end) * [1 1], 'color', 'k', 'linestyle', '--');
-        ylim(get(gca, 'Ylim'))
+    ax_X.YLim = chain.params.t_bnd([1 end]);
+    ax_Y.YLim = chain.params.t_bnd([1 end]);
+    ax_Z.YLim = chain.params.t_bnd([1 end]);
+    
+    clim(ax_X,'manual')
+    clim(ax_Y,'manual')
+    clim(ax_Z,'manual')
+    
+    xlabel(ax_X,['X^{1:M} (',chain.params.units.length,')'])
+    xlabel(ax_Y,['Y^{1:M} (',chain.params.units.length,')'])
+    xlabel(ax_Z,['Z^{1:M} (',chain.params.units.length,')'])
 
-        %----------------------------------------------------------------------
-        subplot(num, mum, 3 * mum + [1 2 * mum - 1]);
-        Gim.ax_SAMP_y = plot(chain.params.t_mid, chain.sample.Ym, 'b', ...
-            chain.params.t_mid, chain.sample.Ym .* mask_Sm, '.-');
+    ylabel(ax_X,['T (',chain.params.units.time,')'])
+    
+    ax_Y.YTickLabel = [];
+    ax_Z.YTickLabel = [];
 
-        if isfield(chain.params, 'ground')
-            temp = line( ...
-                chain.params.ground.tk, ...
-                chain.params.ground.Yk, ...
-                'color', 'r', 'LineWidth', 2 ...
-            );
+    title(ax_Y,'MCMC sample')
 
-            for m = 1:length(temp)
-                uistack(temp(m), 'bottom');
-            end
+    
 
-        end
+    ax_T = subplot(num,mum,[mum*(num-2)+1 mum*num-2]);
 
-        clear temp
-        xlim(chain.params.t_bnd([1 end]))
+    Gim.T = plot3(ax_T,X,Y,Z,'.-','color',col_1);
+    ax_T.Box = 'off';
+ 
+    grid(ax_T,'on')
 
-        for m = 1:chain.params.M
+    xlabel(ax_T,['X^{1:M} (',chain.params.units.length,')'])
+    ylabel(ax_T,['Y^{1:M} (',chain.params.units.length,')'])
+    zlabel(ax_T,['Z^{1:M} (',chain.params.units.length,')'])
 
-            if chain.sample.bm(m)
-                Gim.ax_SAMP_y(m).LineStyle = '-';
-                Gim.ax_SAMP_y(m).LineWidth = 2;
-                Gim.ax_SAMP_y(m + chain.params.M).Color = 'g';
-            else
-                Gim.ax_SAMP_y(m).LineStyle = ':';
-                Gim.ax_SAMP_y(m + chain.params.M).Color = 'b';
-            end
+    ax_T.XLim = [min(ax_X.XLim(1),min(X(:))) max(ax_X.XLim(2),max(max(X(:))))];
+    ax_T.YLim = [min(ax_Y.XLim(1),min(Y(:))) max(ax_Y.XLim(2),max(max(Y(:))))];
+    ax_T.ZLim = [min(ax_Z.XLim(1),min(Z(:))) max(ax_Z.XLim(2),max(max(Z(:))))];
 
-        end
+    % draw prior box
+    R = [chain.params.X_prior_min, chain.params.X_prior_max, chain.params.X_prior_max, chain.params.X_prior_min,        chain.params.X_prior_min, chain.params.X_prior_max, chain.params.X_prior_max, chain.params.X_prior_min;
+         chain.params.Y_prior_min, chain.params.Y_prior_min, chain.params.Y_prior_max, chain.params.Y_prior_max,        chain.params.Y_prior_min, chain.params.Y_prior_min, chain.params.Y_prior_max, chain.params.Y_prior_max;
+         chain.params.Z_prior_min, chain.params.Z_prior_min, chain.params.Z_prior_min, chain.params.Z_prior_min,        chain.params.Z_prior_max, chain.params.Z_prior_max, chain.params.Z_prior_max, chain.params.Z_prior_max];
+    line(ax_T,[R(1,1) R(1,2) R(1,3) R(1,4) R(1,1)],...
+              [R(2,1) R(2,2) R(2,3) R(2,4) R(2,1)],...
+              [R(3,1) R(3,2) R(3,3) R(3,4) R(3,1)],...
+         'color','k','linestyle',':')
+    line(ax_T,[R(1,5) R(1,6) R(1,7) R(1,8) R(1,5)],...
+              [R(2,5) R(2,6) R(2,7) R(2,8) R(2,5)],...
+              [R(3,5) R(3,6) R(3,7) R(3,8) R(3,5)],...
+         'color','k','linestyle',':')
+    line(ax_T,[R(1,1) R(1,5)],...
+              [R(2,1) R(2,5)],...
+              [R(3,1) R(3,5)],...
+         'color','k','linestyle',':')
+    line(ax_T,[R(1,2) R(1,6)],...
+              [R(2,2) R(2,6)],...
+              [R(3,2) R(3,6)],...
+         'color','k','linestyle',':')
+    line(ax_T,[R(1,3) R(1,7)],...
+              [R(2,3) R(2,7)],...
+              [R(3,3) R(3,7)],...
+         'color','k','linestyle',':')
+    line(ax_T,[R(1,4) R(1,8)],...
+              [R(2,4) R(2,8)],...
+              [R(3,4) R(3,8)],...
+         'color','k','linestyle',':')
+    
+    % draw image box
+    line(ax_T,[chain.params.x_bnd(1) chain.params.x_bnd(end) chain.params.x_bnd(end) chain.params.x_bnd(  1) chain.params.x_bnd(1)],...
+              [chain.params.y_bnd(1) chain.params.y_bnd(  1) chain.params.y_bnd(end) chain.params.y_bnd(end) chain.params.y_bnd(1)],'color','k')
 
-        add_prior(gca, 'norm', chain.params.Ym_prior_mu, chain.params.Ym_prior_sg)
-        ylabel(['Y^m (', chain.params.units.length, ')'])
-        box off
-        grid on
-        line(chain.params.t_bnd(end - 2) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', '-');
-        line(chain.params.t_bnd(end - 1) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', '-');
-        line(chain.params.t_mid(chain.params.t_idx(end - 1, :), :) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', ':');
-        line(get(gca, 'xlim'), chain.params.y_bnd(1) * [1 1], 'color', 'k', 'linestyle', '--');
-        line(get(gca, 'xlim'), chain.params.y_bnd(end) * [1 1], 'color', 'k', 'linestyle', '--');
-        ylim(get(gca, 'Ylim'))
 
-        %----------------------------------------------------------------------
-        subplot(num, mum, 5 * mum + [1 2 * mum - 1]);
-        Gim.ax_SAMP_z = plot(chain.params.t_mid, chain.sample.Zm, 'b', ...
-            chain.params.t_mid, chain.sample.Zm .* mask_Sm, '.-');
 
-        if isfield(chain.params, 'ground')
-            temp = line( ...
-                chain.params.ground.tk, ...
-                chain.params.ground.Zk, ...
-                'color', 'r', 'LineWidth', 2 ...
-            );
 
-            for m = 1:length(temp)
-                uistack(temp(m), 'bottom');
-            end
 
-        end
+    
 
-        clear temp
-        xlim(chain.params.t_bnd([1 end]))
+    
+    % --- MCMC ------------------------------------------------------------
+    ax_F = subplot(num,mum,0*mum+[4 1*mum],'YAxisLocation','Right','XLim',i_lim);
+    ax_b = subplot(num,mum,1*mum+[4 2*mum],'YAxisLocation','Right','XLim',i_lim);
+    ax_C = subplot(num,mum,3*mum+[4 1*mum],'YAxisLocation','Right','XLim',i_lim);
+    ax_h = subplot(num,mum,4*mum+[4 1*mum],'YAxisLocation','Right','XLim',i_lim);
+    ax_D = subplot(num,mum,5*mum+[4 2*mum],'YAxisLocation','Right','XLim',i_lim);
+    
+    title(ax_F,['MCMC chain (stride=',num2str(chain.stride),')'])
+	xlabel(ax_D, 'MCMC iteration (i)')
 
-        for m = 1:chain.params.M
+    ax_F.YScale = 'log';
+    ax_C.YScale = 'log';
+    ax_h.YScale = 'log';
+    ax_D.YScale = 'log';
 
-            if chain.sample.bm(m)
-                Gim.ax_SAMP_z(m).LineStyle = '-';
-                Gim.ax_SAMP_z(m).LineWidth = 2;
-                Gim.ax_SAMP_z(m + chain.params.M).Color = 'g';
-            else
-                Gim.ax_SAMP_z(m).LineStyle = ':';
-                Gim.ax_SAMP_z(m + chain.params.M).Color = 'b';
-            end
+    ax_F.YGrid = 'on';
+    ax_C.YGrid = 'on';
+    ax_h.YGrid = 'on';
+    ax_D.YGrid = 'on';
 
-        end
+    ax_F.XTickLabel = [];
+    ax_b.XTickLabel = [];
+    ax_C.XTickLabel = [];
+    ax_h.XTickLabel = [];
 
-        add_prior(gca, 'symnorm', chain.params.Zm_prior_mu, chain.params.Zm_prior_sg)
-        ylabel(['z^m (', chain.params.units.length, ')'])
-        box off
-        grid on
-        line(chain.params.t_bnd(end - 2) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', '-');
-        line(chain.params.t_bnd(end - 1) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', '-');
-        line(chain.params.t_mid(chain.params.t_idx(end - 1, :), :) * [1 1], get(gca, 'ylim'), 'color', 'k', 'linestyle', ':');
-        %     line(get(gca,'xlim'),chain.params.x_bnd(  1)*[1 1],'color','k','linestyle','--');
-        %     line(get(gca,'xlim'),chain.params.x_bnd(end)*[1 1],'color','k','linestyle','--');
-        line(get(gca, 'xlim'), 0 * [1 1], 'color', 'k', 'linestyle', '--');
-        line(get(gca, 'xlim'), +chain.params.PSF_params.z_ref * [1 1], 'color', 'k', 'linestyle', ':');
-        line(get(gca, 'xlim'), -chain.params.PSF_params.z_ref * [1 1], 'color', 'k', 'linestyle', ':');
-        ylim(get(gca, 'Ylim'))
+    ylabel(ax_F, 'F (1)' )
+    ylabel(ax_b,{'B, b^{1:M}',[]})
+    ylabel(ax_C,['\langleC\rangle (phts/',chain.params.units.time,'/',chain.params.units.length,'^2)'])
+    ylabel(ax_h,['\langleh\rangle (phts/',chain.params.units.time,')'])
+    ylabel(ax_D,['D (',chain.params.units.length,'^2/',chain.params.units.time,')'])
 
-        % add PSF
-        z_temp = linspace(min(get(gca, 'Ylim')), max(get(gca, 'Ylim')));
-        p_temp = min(get(gca, 'Xlim')) + 0.15 * (max(get(gca, 'Xlim')) - min(get(gca, 'Xlim'))) ./ (1 + (z_temp / chain.params.PSF_params.z_ref) .^ 2);
-        line(p_temp, z_temp, 'color', 'k', 'linestyle', ':');
+    ax_b.YLim = [0 chain.params.M+1];
 
-        xlabel(['t (', chain.params.units.time, ')'])
-
-        %----------------------------------------------------------------------
-        subplot(num, mum, [1 * mum 1 * mum]);
-        xlim([max(0, i(1) - 1), i(end) + 1])
-        ylim([0 min(chain.params.M, 2 * nnz(chain.sample.bm)) + 1])
-        set(gca, 'YTick', 1:chain.params.M)
-
-        for m = 1:chain.params.M
-            Gim.ax_MCMC_b{1}(m) = line(i, get_a(chain.bm(:, m), m), 'marker', '.');
-        end
-
-        Gim.ax_MCMC_b{2} = line(chain.sample.i * [1 1], get(gca, 'Ylim'), 'color', 'k', 'linestyle', ':');
-        Gim.ax_MCMC_b{3} = line(i, Bm, 'color', sum([0 0; 0 1] * lines(2)));
-
-        if isfield(chain.params, 'ground')
-            temp = line(get(gca, 'XLim'), chain.params.ground.M * [1 1], 'color', 'r', 'linewidth', 2);
-            uistack(temp, 'top');
-        end
-
-        clear temp
-        ylabel('b^m')
-        title('MCMC')
-        set(gca, 'Yaxislocation', 'right')
-        box off
-        grid on
-
-        %----------------------------------------------------------------------
-        subplot(num, mum, [2 * mum 3 * mum]);
-        Gim.ax_MCMC_D{1} = plot(i, chain.D, '.-');
-        xlim([max(0, i(1) - 1), i(end) + 1])
-
-        if isfield(chain.params, 'ground')
-            temp = line(get(gca, 'XLim'), chain.params.ground.D * [1 1], 'color', 'r', 'linewidth', 2);
-            uistack(temp, 'top');
-        end
-
-        clear temp
-        % ylim([0 chain.params.M+1])
-        Gim.ax_MCMC_D{2} = line(chain.sample.i * [1 1], get(gca, 'Ylim'), 'color', 'k', 'linestyle', ':');
-        ylabel({'D'; ['(', chain.params.units.length, '^2/', chain.params.units.time, ')']})
-        set(gca, 'Yaxislocation', 'right')
-        add_prior(gca, 'invgamma', chain.params.D_prior_phi, chain.params.D_prior_chi)
-        box off
-        grid on
-
-        %----------------------------------------------------------------------
-        subplot(num, mum, [4 * mum 4 * mum]);
-        Gim.ax_MCMC_P{1} = plot(i, ones(length(chain.D), chain.params.M), '.-');
-        %     set(gca,'YScale','Log')
-        uistack(Gim.ax_MCMC_P{1}(3), 'bottom')
-        xlim([max(0, i(1) - 1), i(end) + 1])
-
-        if isfield(chain.params, 'ground')
-            temp = line(get(gca, 'XLim'), [1; 1] * [1, 1, 1], 'color', 'r', 'linewidth', 2);
-            uistack(temp, 'top');
-        end
-
-        clear temp
-        % ylim([0 chain.params.M+1])
-        Gim.ax_MCMC_P{2} = line(chain.sample.i * [1 1], get(gca, 'Ylim'), 'color', 'k', 'linestyle', ':');
-        ylabel({'\pi_{\sigma}'; '(1/stp)'})
-        set(gca, 'Yaxislocation', 'right')
-        %add_prior(gca, 'beta', chain.params.Pj_prior_A(1), chain.params.Pj_prior_B(1))
-        %add_prior(gca, 'beta', chain.params.Pj_prior_A(2), chain.params.Pj_prior_B(2))
-        %add_prior(gca, 'beta', chain.params.Pj_prior_A(3), chain.params.Pj_prior_B(3))
-        box off
-        grid on
-
-        %----------------------------------------------------------------------
-        subplot(num, mum, [5 * mum 5 * mum]);
-        Gim.ax_MCMC_F{1} = plot(i, chain.F, '.-');
-        xlim([max(0, i(1) - 1), i(end) + 1])
-
-        if isfield(chain.params, 'ground')
-            temp = line(get(gca, 'XLim'), chain.params.ground.F * [1 1], 'color', 'r', 'linewidth', 2);
-            uistack(temp, 'top');
-        end
-
-        clear temp
-        % ylim([0 chain.params.M+1])
-        Gim.ax_MCMC_F{2} = line(chain.sample.i * [1 1], get(gca, 'Ylim'), 'color', 'k', 'linestyle', ':');
-        ylabel({'F'; ['(\gamma/', chain.params.units.time, '/', chain.params.units.length, '^2)']})
-        set(gca, 'Yaxislocation', 'right')
-        add_prior(gca, 'gamma', chain.params.F_prior_phi, chain.params.F_prior_psi)
-        box off
-        grid on
-
-        %----------------------------------------------------------------------
-        subplot(num, mum, [6 * mum 6 * mum]);
-        Gim.ax_MCMC_h{1} = plot(i, chain.h, '.-');
-        xlim([max(0, i(1) - 1), i(end) + 1])
-
-        if isfield(chain.params, 'ground')
-            temp = line(get(gca, 'XLim'), chain.params.ground.h * [1 1], 'color', 'r', 'linewidth', 2);
-            uistack(temp, 'top');
-        end
-
-        clear temp
-        % ylim([0 chain.params.M+1])
-        Gim.ax_MCMC_h{2} = line(chain.sample.i * [1 1], get(gca, 'Ylim'), 'color', 'k', 'linestyle', ':');
-        ylabel({'h'; ['(\gamma/', chain.params.units.time, ')']})
-        set(gca, 'Yaxislocation', 'right')
-        add_prior(gca, 'gamma', chain.params.h_prior_phi, chain.params.h_prior_psi)
-        box off
-        grid on
-
-        %----------------------------------------------------------------------
-        subplot(num, mum, [7 * mum 7 * mum]);
-        Gim.ax_MCMC_G{1} = plot(i, chain.G, '.-');
-        xlim([max(0, i(1) - 1), i(end) + 1])
-
-        if isfield(chain.params, 'ground')
-            temp = line(get(gca, 'XLim'), chain.params.ground.G * [1 1], 'color', 'r', 'linewidth', 2);
-            uistack(temp, 'top');
-        end
-
-        clear temp
-        % ylim([0 chain.params.M+1])
-        Gim.ax_MCMC_G{2} = line(chain.sample.i * [1 1], get(gca, 'Ylim'), 'color', 'k', 'linestyle', ':');
-        ylabel({'G'; ['(', chain.params.units.image, '/\gamma)']})
-        set(gca, 'Yaxislocation', 'right')
-        add_prior(gca, 'invgamma', chain.params.G_prior_phi, chain.params.G_prior_chi)
-        box off
-        grid on
-
-        xlabel('MCMC iteration (i)')
-
+    if ~isempty( chain.ledger )
+        xline(ax_F,chain.ledger(end,1));
+        xline(ax_b,chain.ledger(end,1));
+        xline(ax_C,chain.ledger(end,1));
+        xline(ax_h,chain.ledger(end,1));
+        xline(ax_D,chain.ledger(end,1));
     end
 
-    for m = 1:chain.params.M
-        Gim.ax_SAMP_x(m).YData = chain.sample.Xm(:, m);
-        Gim.ax_SAMP_x(m + chain.params.M).YData = chain.sample.Xm(:, m) .* mask_Sm(:, m);
+    Gim.F = line(ax_F,chain_i,      chain.F(:,1),'marker','.','color',col_2);
+    Gim.b = line(ax_b,chain_i,     chain_b      ,'marker','.','color',col_1);
+    Gim.B = line(ax_b,chain_i,     chain_B      ,'marker','o','color',col_3);
+    Gim.C = line(ax_C,chain_i,mean(chain.C,2)   ,'marker','.','color',col_1);
+    Gim.h = line(ax_h,chain_i,mean(chain.h,2)   ,'marker','.','color',col_1);
+    Gim.D = line(ax_D,chain_i,     chain.D      ,'marker','.','color',col_3);
 
-        Gim.ax_SAMP_y(m).YData = chain.sample.Ym(:, m);
-        Gim.ax_SAMP_y(m + chain.params.M).YData = chain.sample.Ym(:, m) .* mask_Sm(:, m);
 
-        Gim.ax_SAMP_z(m).YData = chain.sample.Zm(:, m);
-        Gim.ax_SAMP_z(m + chain.params.M).YData = chain.sample.Zm(:, m) .* mask_Sm(:, m);
-
-        if chain.sample.bm(m)
-            Gim.ax_SAMP_x(m).LineStyle = '-';
-            Gim.ax_SAMP_x(m + chain.params.M).Color = 'g';
-
-            Gim.ax_SAMP_y(m).LineStyle = '-';
-            Gim.ax_SAMP_y(m + chain.params.M).Color = 'g';
-
-            Gim.ax_SAMP_z(m).LineStyle = '-';
-            Gim.ax_SAMP_z(m + chain.params.M).Color = 'g';
-        else
-            Gim.ax_SAMP_x(m).LineStyle = ':';
-            Gim.ax_SAMP_x(m + chain.params.M).Color = 'b';
-
-            Gim.ax_SAMP_y(m).LineStyle = ':';
-            Gim.ax_SAMP_y(m + chain.params.M).Color = 'b';
-
-            Gim.ax_SAMP_z(m).LineStyle = ':';
-            Gim.ax_SAMP_z(m + chain.params.M).Color = 'b';
-        end
-
-        Gim.ax_MCMC_b{1}(m).YData = get_a(chain.bm(:, m), m);
+    if isfield( chain.params,'ground' )
+        yline(ax_D,chain.params.ground.D,'color',col_3)
     end
+    
+end % init
 
-    Gim.ax_MCMC_D{1}.YData = chain.D;
-    Gim.ax_MCMC_F{1}.YData = chain.F;
-    Gim.ax_MCMC_h{1}.YData = chain.h;
-    Gim.ax_MCMC_G{1}.YData = chain.G;
-    Gim.ax_MCMC_P{1}(1).YData = ones(length(chain.D), 1);
-    Gim.ax_MCMC_P{1}(2).YData = ones(length(chain.D), 1);
-    Gim.ax_MCMC_P{1}(3).YData = ones(length(chain.D), 1);
 
-    Gim.ax_MCMC_b{2}.XData = chain.sample.i * [1 1];
-    Gim.ax_MCMC_D{2}.XData = chain.sample.i * [1 1];
-    Gim.ax_MCMC_F{2}.XData = chain.sample.i * [1 1];
-    Gim.ax_MCMC_h{2}.XData = chain.sample.i * [1 1];
-    Gim.ax_MCMC_G{2}.XData = chain.sample.i * [1 1];
-    Gim.ax_MCMC_P{2}.XData = chain.sample.i * [1 1];
 
-    Gim.ax_MCMC_b{3}.YData = Bm;
 
-    drawnow
+
+Gim.x.XData = x; Gim.x.YData = chain.params.t_mid(K);
+Gim.y.XData = y; Gim.y.YData = chain.params.t_mid(K);
+Gim.z.XData = z; Gim.z.YData = chain.params.t_mid(K);
+
+for m = 1:chain.params.M
+    % --- sample
+    Gim.T(m).XData = X(:,m);
+    Gim.T(m).YData = Y(:,m);
+    Gim.T(m).ZData = Z(:,m);
+
+    Gim.X(m).XData = X(:,m);
+    Gim.Y(m).XData = Y(:,m);
+    Gim.Z(m).XData = Z(:,m);
+    % --- MCMC
+    Gim.b(m).YData = chain_b(:,m);
 end
+    Gim.F.YData = chain.F;
+    Gim.B.YData = chain_B;
+    Gim.C.YData = mean(chain.C,2);
+    Gim.h.YData = mean(chain.h,2);
+    Gim.D.YData = chain.D;
 
-%%
-function a = get_a(b, m)
 
-    a = nan(length(b), 1);
-    a(b) = m;
-end
+
+drawnow
+
+
+end % visualize

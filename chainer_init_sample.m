@@ -1,31 +1,36 @@
-function sample = chainer_init_sample(params)
+function sample = chainer_init_sample(params,opts)
 
-    %% counter
-    sample.i = 0;
 
-    %% temperature for simulated annealing
-    sample.T = params.T_init;
+%% counter
+sample.i = 0;
+sample.F = get_F(sample.i,params);
 
-    %% diffusion coefficient
-    sample.D = params.D_prior_phi * params.D_prior_chi / randg(params.D_prior_phi);
 
-    %% emission rate
-    sample.h = params.h_prior_psi / params.h_prior_phi * randg(params.h_prior_phi);
+%% loads
+sample.b = rand(1,params.M) < 1/(1+exp(-params.b_prior_log_p1_m_log_p0));
 
-    %% background photon flux
-    sample.F = params.F_prior_psi / params.F_prior_phi * randg(params.F_prior_phi);
 
-    %% EMCCD gain
-    sample.G = params.G_prior_phi * params.G_prior_chi / randg(params.G_prior_phi);
+%% emission rates
+sample.h = params.h_prior_REF./params.h_prior_A.*randg(params.h_prior_A,params.N,1);
 
-    %% emitter loads
-    sample.bm = (rand(1, params.M) <= params.bm_prior_gamma / (params.bm_prior_gamma + params.M - 1));
 
-    sample.sm = ones(params.N, params.M);
+%% atoms and dynamics
+sample.K = nan(       1,params.M);
+sample.X = nan(params.N,params.M);
+sample.Y = nan(params.N,params.M);
+sample.Z = nan(params.N,params.M);
 
-    [sample.Xm, sample.Ym, sample.Zm] = sampler_update_locs_cm(params.M, sample.D, params);
+[sample.K,sample.X,sample.Y,sample.Z] = sampler_update_DDD(sample.K,sample.X,sample.Y,sample.Z,false(1,params.M),params);
 
-    %% record acceptance ratios for some adapative tuning
-    sample.rec_Fh = repmat([0; eps], 1, 3); % emission rates
-    sample.rec_XYZ = repmat([0; eps], 1, 2); % locator proposals
-end
+
+%% background
+sample.C = params.C_prior_REF./params.C_prior_A.*randg(params.C_prior_A,params.N,1);
+
+
+%% book-keeping
+sample.L = get_log_probs(sample.F,sample.C,sample.b,sample.h,sample.K,sample.X,sample.Y,sample.Z,params);
+sample.D = get_D(sample.X,sample.Y,sample.Z,sample.b,params);
+
+sample.rec = repmat([0;realmin;0],1,9);
+
+
