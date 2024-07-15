@@ -3,4 +3,5 @@
 *.out
 *.gz
 *.log
+*.bib
 figures
