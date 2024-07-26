@@ -5,4 +5,5 @@
 *.log
 *.bib
 *.DS_Store
+.vscode
 figures
